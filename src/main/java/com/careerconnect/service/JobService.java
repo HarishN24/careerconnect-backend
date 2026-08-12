@@ -1,5 +1,13 @@
 package com.careerconnect.service;
 
+import java.util.List;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
 import com.careerconnect.dto.JobRequest;
 import com.careerconnect.dto.JobResponse;
 import com.careerconnect.entity.Job;
@@ -8,12 +16,8 @@ import com.careerconnect.exception.ResourceNotFoundException;
 import com.careerconnect.exception.UnauthorizedActionException;
 import com.careerconnect.repository.ApplicationRepository;
 import com.careerconnect.repository.JobRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
-import java.util.List;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +39,14 @@ public class JobService {
             jobs = jobRepository.findAll();
         }
         return jobs.stream().map(this::toResponse).toList();
+    }
+    public Page<JobResponse> getJobsPage(String title, String location, String skills, Pageable pageable) {
+        String normalizedTitle = StringUtils.hasText(title) ? title : null;
+        String normalizedLocation = StringUtils.hasText(location) ? location : null;
+        String normalizedSkills = StringUtils.hasText(skills) ? skills : null;
+
+        return jobRepository.searchJobsPage(normalizedTitle, normalizedLocation, normalizedSkills, pageable)
+                .map(this::toResponse);
     }
 
     public JobResponse getJobById(Long id) {

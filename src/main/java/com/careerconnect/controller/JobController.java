@@ -5,6 +5,11 @@ import com.careerconnect.dto.JobResponse;
 import com.careerconnect.service.JobService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -26,7 +31,18 @@ public class JobController {
             @RequestParam(required = false) String skills) {
         return ResponseEntity.ok(jobService.getAllJobs(title, location, skills));
     }
-
+    @GetMapping("/page")
+    public ResponseEntity<Page<JobResponse>> getJobsPage(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "6") int size,
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) String location,
+            @RequestParam(required = false) String skills) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 50);
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdDate"));
+        return ResponseEntity.ok(jobService.getJobsPage(title, location, skills, pageable));
+    }
     @GetMapping("/{id}")
     public ResponseEntity<JobResponse> getJobById(@PathVariable Long id) {
         return ResponseEntity.ok(jobService.getJobById(id));

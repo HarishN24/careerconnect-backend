@@ -23,6 +23,7 @@ public class ApplicationService {
     private final ApplicationRepository applicationRepository;
     private final JobRepository jobRepository;
     private final UserService userService;
+    private final NotificationService notificationService;
 
     @Transactional
     public ApplicationResponse applyToJob(String applicantEmail, Long jobId) {
@@ -39,8 +40,10 @@ public class ApplicationService {
                 .applicant(applicant)
                 .status(ApplicationStatus.APPLIED)
                 .build();
-
-        return toResponse(applicationRepository.save(application));
+        Application saved = applicationRepository.save(application);
+        notificationService.sendApplicationNotification(saved);
+        notificationService.sendApplicationConfirmation(saved);
+        return toResponse(saved);
     }
 
     public List<ApplicationResponse> getMyApplications(String applicantEmail) {
@@ -71,7 +74,9 @@ public class ApplicationService {
         }
 
         application.setStatus(status);
-        return toResponse(applicationRepository.save(application));
+        Application saved= applicationRepository.save(application);
+        notificationService.sendStatusUpdateNotification(saved);
+        return toResponse(saved);
     }
 
     private ApplicationResponse toResponse(Application application) {
