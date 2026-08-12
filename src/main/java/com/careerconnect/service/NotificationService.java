@@ -2,9 +2,13 @@ package com.careerconnect.service;
 
 import com.careerconnect.entity.Application;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -12,13 +16,18 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class NotificationService {
 
+    private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
+
     private final JavaMailSender mailSender;
 
     @Value("${spring.mail.username:}")
     private String mailFrom;
 
+
+    @Async("mailExecutor")
     public void sendApplicationNotification(Application application) {
         if (!StringUtils.hasText(mailFrom)) {
+            log.warn("spring.mail.username is not configured - skipping recruiter notification email");
             return;
         }
 
@@ -27,7 +36,7 @@ public class NotificationService {
         String jobTitle = application.getJob().getTitle();
 
         if (!StringUtils.hasText(recruiterEmail)) {
-            System.out.println("ERROR: Recruiter email is empty!");
+            log.error("Recruiter email is empty for job id={}", application.getJob().getId());
             return;
         }
         send(
@@ -38,10 +47,12 @@ public class NotificationService {
                         + "Please log in to CareerConnect to review the application.\n\n"
                         + "Regards,\nCareerConnect"
         );
-
     }
+
+    @Async("mailExecutor")
     public void sendApplicationConfirmation(Application application) {
         if (!StringUtils.hasText(mailFrom)) {
+            log.warn("spring.mail.username is not configured - skipping applicant confirmation email");
             return;
         }
 
@@ -67,8 +78,10 @@ public class NotificationService {
         );
     }
 
+    @Async("mailExecutor")
     public void sendStatusUpdateNotification(Application application) {
         if (!StringUtils.hasText(mailFrom)) {
+            log.warn("spring.mail.username is not configured - skipping status update email");
             return;
         }
 
@@ -103,8 +116,10 @@ public class NotificationService {
             message.setSubject(subject);
             message.setText(text);
             mailSender.send(message);
-        } catch (Exception ex) {
-            System.err.println("Email notification failed: " + ex.getMessage());
+            log.info("Email sent to {} - subject: {}", to, subject);
+        } catch (MailException ex) {
+
+            log.error("Email notification failed for recipient {}: {}", to, ex.getMessage(), ex);
         }
     }
 }
