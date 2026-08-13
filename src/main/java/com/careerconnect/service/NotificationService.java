@@ -1,36 +1,44 @@
 package com.careerconnect.service;
 
 import com.careerconnect.entity.Application;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 public class NotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
+    private static final URI RESEND_ENDPOINT = URI.create("https://api.resend.com/emails");
 
-    private final JavaMailSender mailSender;
+    private final ObjectMapper objectMapper;
 
-    @Value("${spring.mail.username:}")
-    private String mailFrom;
+    @Value("${resend.api-key:}")
+    private String apiKey;
 
+    @Value("${resend.from-email:onboarding@resend.dev}")
+    private String fromEmail;
+
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
 
     @Async("mailExecutor")
     public void sendApplicationNotification(Application application) {
-        if (!StringUtils.hasText(mailFrom)) {
-            log.warn("spring.mail.username is not configured - skipping recruiter notification email");
-            return;
-        }
-
         String recruiterEmail = application.getJob().getRecruiter().getEmail();
         String applicantName = application.getApplicant().getName();
         String jobTitle = application.getJob().getTitle();
@@ -51,11 +59,6 @@ public class NotificationService {
 
     @Async("mailExecutor")
     public void sendApplicationConfirmation(Application application) {
-        if (!StringUtils.hasText(mailFrom)) {
-            log.warn("spring.mail.username is not configured - skipping applicant confirmation email");
-            return;
-        }
-
         String applicantEmail = application.getApplicant().getEmail();
         String applicantName = application.getApplicant().getName();
         String jobTitle = application.getJob().getTitle();
@@ -80,11 +83,6 @@ public class NotificationService {
 
     @Async("mailExecutor")
     public void sendStatusUpdateNotification(Application application) {
-        if (!StringUtils.hasText(mailFrom)) {
-            log.warn("spring.mail.username is not configured - skipping status update email");
-            return;
-        }
-
         String applicantEmail = application.getApplicant().getEmail();
         String applicantName = application.getApplicant().getName();
         String jobTitle = application.getJob().getTitle();
@@ -109,16 +107,37 @@ public class NotificationService {
     }
 
     private void send(String to, String subject, String text) {
-        try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(mailFrom);
-            message.setTo(to);
-            message.setSubject(subject);
-            message.setText(text);
-            mailSender.send(message);
-            log.info("Email sent to {} - subject: {}", to, subject);
-        } catch (MailException ex) {
+        if (!StringUtils.hasText(apiKey)) {
+            log.warn("RESEND_API_KEY is not configured - skipping email to {}", to);
+            return;
+        }
 
+        try {
+            Map<String, Object> payload = Map.of(
+                    "from", fromEmail,
+                    "to", List.of(to),
+                    "subject", subject,
+                    "text", text
+            );
+            String body = objectMapper.writeValueAsString(payload);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(RESEND_ENDPOINT)
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                log.info("Email sent to {} - subject: {}", to, subject);
+            } else {
+                log.error("Resend API returned {} for recipient {}: {}",
+                        response.statusCode(), to, response.body());
+            }
+        } catch (Exception ex) {
             log.error("Email notification failed for recipient {}: {}", to, ex.getMessage(), ex);
         }
     }
